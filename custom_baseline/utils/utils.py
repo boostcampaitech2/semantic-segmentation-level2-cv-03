@@ -11,6 +11,7 @@ import json
 import wandb
 import cv2
 from sklearn.model_selection import KFold
+import logging
 
 class_labels ={
         0: 'Background',
@@ -39,6 +40,16 @@ cls_colors = {
     9 : (64,64,128),
     10 : (128,0,192)
   }
+
+def get_logger(name):
+    logger = logging.getLogger('Segmentation')
+    logger.setLevel(logging.INFO)
+    logger_dir = f'./logs/'
+    if not os.path.exists(logger_dir):
+        os.makedirs(logger_dir)
+    file_handler = logging.FileHandler(os.path.join(logger_dir, name, '.log'))
+    logger.addHandler(file_handler)
+    return logger
 
 def get_device():
     device = "cuda" if torch.cuda.is_available() else "cpu"
