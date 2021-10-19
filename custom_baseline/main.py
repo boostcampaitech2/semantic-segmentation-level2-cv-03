@@ -7,7 +7,6 @@ from data.data import *
 from utils.schedulers import *
 
 import wandb
-import logging
 import argparse
 import torch.nn as nn
 
@@ -27,7 +26,7 @@ if __name__ == '__main__':
     set_seed(args.seed)
     
     config = dict(
-        learning_rate = args.max_lr,
+        learning_rate = args.maxlr,
         architecture = args.name,
         seed = args.seed,
         batch_size=args.batch_size
@@ -41,12 +40,23 @@ if __name__ == '__main__':
     
     device = get_device()
     EPOCHS = args.epoch
-    model = get_fcn_r50().to(device)
-    # model = UnetPlusPlus().to(device)
+    # model = get_fcn_r50().to(device)
+    model = UnetPlusPlus().to(device)
     criterion = nn.CrossEntropyLoss()
     optimizer = optim.Adam(params=model.parameters(), lr=args.lr)
+    # optimizer = optim.SGD(params=model.parameters(), lr=args.lr, momentum=0.9)
+    # scheduler = optim.lr_scheduler.OneCycleLR(optimizer, max_lr=args.maxlr, total_steps=len(train_loader)*EPOCHS, epochs=EPOCHS, steps_per_epoch=len(train_loader), anneal_strategy='cos', pct_start=0.3)
     # scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, eta_min =5e-3, T_max=int(EPOCHS*len(train_loader)))
-    scheduler = CosineAnnealingWarmupRestarts(optimizer, len(train_loader)*EPOCHS, 1.0, args.max_lr, args.min_lr, int(len(train_loader)*EPOCHS*0.1))
+    first_cycle_steps = len(train_loader) * EPOCHS // 3
+    scheduler = CosineAnnealingWarmupRestarts(
+        optimizer,
+        first_cycle_steps=first_cycle_steps,
+        cycle_mult=1.0,
+        max_lr=args.maxlr,
+        min_lr=args.minlr,
+        warmup_steps=int(first_cycle_steps * 0.2),
+        gamma=0.5
+    )
     
     best_loss = float("INF")
     best_mIoU = 0

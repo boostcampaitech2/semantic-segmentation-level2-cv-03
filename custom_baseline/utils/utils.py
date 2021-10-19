@@ -47,7 +47,7 @@ def get_logger(name):
     logger_dir = f'./logs/'
     if not os.path.exists(logger_dir):
         os.makedirs(logger_dir)
-    file_handler = logging.FileHandler(os.path.join(logger_dir, name, '.log'))
+    file_handler = logging.FileHandler(os.path.join(logger_dir, name + '.log'))
     logger.addHandler(file_handler)
     return logger
 
