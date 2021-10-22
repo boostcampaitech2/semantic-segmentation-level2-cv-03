@@ -37,7 +37,7 @@ class MyAlbu:
         augmented = self.transform(image=img,mask=mask)
 
         results['img'] = augmented['image']
-        results['mask'] = augmented['mask']
+        results['gt_semantic_seg']= augmented['mask']
 
         return results
 ##
