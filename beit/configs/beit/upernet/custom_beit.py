@@ -11,8 +11,8 @@
 # https://github.com/microsoft/Swin-Transformer
 # --------------------------------------------------------'
 _base_ = [
-    '../../_base_/models/upernet_beit.py', '/opt/ml/mmsegmentation/configs/_base_/datasets/custom_dataset.py',
-    '../../_base_/default_runtime.py', '/opt/ml/mmsegmentation/configs/_base_/schedules/custom_schedule.py'
+    '../../_base_/models/upernet_beit.py', '../../_base_/datasets/custom_dataset.py',
+    '../../_base_/default_runtime.py', '../../_base_/schedules/custom_schedule.py'
 ]
 crop_size = (512, 512)
 
