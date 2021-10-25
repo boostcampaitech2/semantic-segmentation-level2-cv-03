@@ -1,0 +1,17 @@
+README.md
+setup.py
+mmcv_custom/__init__.py
+mmcv_custom/checkpoint.py
+mmcv_custom/layer_decay_optimizer_constructor.py
+mmcv_custom/resize_transform.py
+mmcv_custom/train_api.py
+mmcv_custom/apex_runner/__init__.py
+mmcv_custom/apex_runner/apex_iter_based_runner.py
+mmcv_custom/apex_runner/checkpoint.py
+mmcv_custom/apex_runner/optimizer.py
+mmseg.egg-info/PKG-INFO
+mmseg.egg-info/SOURCES.txt
+mmseg.egg-info/dependency_links.txt
+mmseg.egg-info/not-zip-safe
+mmseg.egg-info/requires.txt
+mmseg.egg-info/top_level.txt
