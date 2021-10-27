@@ -216,9 +216,9 @@ class CustomDyUnetHead(BaseDecodeHead):
 
         dy1,dy2,dy3,dy4 = [concat_output[:,i,:,:,:] for i in range(concat_output.shape[1])]
         dy1 = self.dy_conv1(dy1) # B x 11 x H x W
-        dy2 = self.dy_conv1(dy2)
-        dy3 = self.dy_conv1(dy3)
-        dy4 = self.dy_conv1(dy4)
+        dy2 = self.dy_conv2(dy2)
+        dy3 = self.dy_conv3(dy3)
+        dy4 = self.dy_conv4(dy4)
 
         # for ms train
         dy1 = F.interpolate(input=dy1,size=d1.shape[2:],mode='nearest') # B x 11 x in_H x in_W
