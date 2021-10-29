@@ -120,3 +120,4 @@ plt.ylabel('y', fontsize=14)
 plt.colorbar()
 plt.savefig('CoordinateHeatmap_(1)generaltrash_51x51.png', dpi=200) ## class 이름 수정
 plt.show()
+
