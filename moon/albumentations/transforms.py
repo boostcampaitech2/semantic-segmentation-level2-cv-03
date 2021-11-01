@@ -7,27 +7,83 @@ from numpy import random
 from ..builder import PIPELINES
 
 ## custom
+import os 
+import cv2
+#import Albumentations as A
+@PIPELINES.register_module()
+class SegCutMix:
+    def __init__(self,
+        data_root,img_dir,ann_dir,
+        p=0.5,class_weight=[0, 0, 0, 0.25, 0.15, 0.2, 0.3, 0, 0, 0, 0.1]):
+        self.img_path = os.path.join(data_root, img_dir)
+        self.label_path = os.path.join(data_root, ann_dir)
+        self.p=p
+        self.class_weight=class_weight
+        
+        self.img_list = os.listdir(self.img_path)
+        assert len(self.img_list)>0
+        self.label_list = os.listdir(self.label_path)
+        assert len(self.label_list)>0
+
+    
+    def __call__(self,results):
+        if np.random.rand() > self.p:
+            return results
+
+        img = results['img'] # H x W x 3
+        mask = results['gt_semantic_seg'] # H x W
+
+        while True:
+            patch_img_name = np.random.choice(self.img_list)
+            patch_label_name = os.path.splitext(patch_img_name)[0]+'.png'
+
+            patch_img_path = os.path.join(self.img_path,patch_img_name)
+            patch_label_path = os.path.join(self.label_path,patch_label_name)
+
+            patch_img = cv2.cvtColor(cv2.imread(patch_img_path),cv2.COLOR_BGR2RGB) # H x W x 3
+            patch_label = cv2.cvtColor(cv2.imread(patch_label_path),cv2.COLOR_BGR2GRAY) # H x W
+
+            label = np.random.choice(np.arange(11),p=self.class_weight)
+            if patch_label[patch_label==label].sum()>20: # 너무 작은 object는 무시
+                break
+    
+        resized = A.Resize(img.shape[0],img.shape[1])(image=patch_img,mask=patch_label)
+        patch_img = resized['image']
+        patch_label = resized['mask']
+
+        patch_img[patch_label!=label]=0
+        patch_label[patch_label!=label]=0
+        img[patch_label==label]=0
+        mask[patch_label==label]=0
+
+        results['img'] = img+patch_img
+        results['gt_semantic_seg'] = patch_label+mask
+
+        return results
+
+## custom
 import albumentations as A
 @PIPELINES.register_module()
 class MyAlbu:
-
     def __init__(self):
         self.transform = A.Compose([
-            A.OneOf([
-                A.ElasticTransform(p=0.5, alpha=120, sigma=120 * 0.05, alpha_affine=120 * 0.03),
-                A.GridDistortion(p=0.5),
-                A.OpticalDistortion(distort_limit=1, shift_limit=0.5, p=1),
-                ], p=0.8),
-            A.OneOf([
-                A.RandomGridShuffle(grid=(3,3),p=0.5),
-                A.CoarseDropout(p=0.5),
-                A.GridDropout(p=0.5),
-                A.Cutout (p=0.5),
-                ], p=0.8),
-            
-            A.RandomRotate90(p=0.5),
+            # A.OneOf([
+            #     A.ElasticTransform(p=0.5, alpha=120, sigma=120 * 0.05, alpha_affine=120 * 0.03),
+            #     A.GridDistortion(p=0.5),
+            #     A.OpticalDistortion(distort_limit=1, shift_limit=0.5, p=1),
+            #     ], p=0.8),
 
-
+            # Pixel transform
+            A.OneOf([
+                A.RGBShift(p=0.8),
+                A.ChannelShuffle(p=0.8),
+                A.ChannelDropout(p=0.8),
+                A.ColorJitter(p=0.8)],
+                p=0.5),
+            # Spatial transform
+            A.CenterCrop(352,352,p=0.3),
+            A.RandomRotate90(p=0.3),
+            A.RandomGridShuffle(grid=(3,3),p=0.3)
         ])
 
     def __call__(self, results):
@@ -37,7 +93,7 @@ class MyAlbu:
         augmented = self.transform(image=img,mask=mask)
 
         results['img'] = augmented['image']
-        results['gt_semantic_seg']= augmented['mask']
+        results['gt_semantic_seg'] = augmented['mask']
 
         return results
 ##
