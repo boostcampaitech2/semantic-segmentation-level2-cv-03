@@ -282,10 +282,8 @@ class EncoderDecoder(BaseSegmentor):
 
         ## custom
         seg_logit = self.inference(imgs[0], img_metas[0], rescale)
-        # seg_logit = dense_crf(imgs[0].cpu().numpy(),seg_logit.cpu().numpy()) # custom
         for i in range(1, len(imgs)):
             cur_seg_logit = self.inference(imgs[i], img_metas[i], rescale)
-            # cur_seg_logit = dense_crf(imgs[i].cpu().numpy(),cur_seg_logit.cpu().numpy()) # custom
             seg_logit += cur_seg_logit
         seg_logit /= len(imgs)
 
@@ -299,8 +297,8 @@ class EncoderDecoder(BaseSegmentor):
         # unravel batch dim
         seg_pred = list(seg_pred)
         # custom
-        #return seg_logit.cpu().numpy()
-        return seg_pred # original
+        return seg_logit.cpu().numpy()
+        # return seg_pred # original
 
 
 ## custom for densecrf

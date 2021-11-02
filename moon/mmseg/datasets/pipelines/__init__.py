@@ -6,7 +6,7 @@ from .loading import LoadAnnotations, LoadImageFromFile
 from .test_time_aug import MultiScaleFlipAug
 from .transforms import (CLAHE, AdjustGamma, Normalize, Pad,
                          PhotoMetricDistortion, RandomCrop, RandomFlip,
-                         RandomRotate, Rerange, Resize, RGB2Gray, SegRescale, MyAlbu)
+                         RandomRotate, Rerange, Resize, RGB2Gray, SegRescale, MyAlbu,SegCutMix)
 
 
 __all__ = [
@@ -15,5 +15,5 @@ __all__ = [
     'MultiScaleFlipAug', 'Resize', 'RandomFlip', 'Pad', 'RandomCrop',
     'Normalize', 'SegRescale', 'PhotoMetricDistortion', 'RandomRotate',
     'AdjustGamma', 'CLAHE', 'Rerange', 'RGB2Gray',
-    'MyAlbu'
+    'MyAlbu','SegCutMix'
 ]

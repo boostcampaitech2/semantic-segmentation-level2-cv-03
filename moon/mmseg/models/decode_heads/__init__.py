@@ -30,6 +30,7 @@ from .custom_unet_head import CustomUnetHead
 from .custom_unet_head import CustomUnetCBAMHead
 from .custom_dy_head import CustomDyHead
 from .custom_dyunet_head import CustomDyUnetHead
+from .custom_dyunet_head import CustomDyUnetCBAMHead
 
 __all__ = [
     'FCNHead', 'PSPHead', 'ASPPHead', 'PSAHead', 'NLHead', 'GCHead', 'CCHead',
@@ -37,5 +38,5 @@ __all__ = [
     'EncHead', 'DepthwiseSeparableFCNHead', 'FPNHead', 'EMAHead', 'DNLHead',
     'PointHead', 'APCHead', 'DMHead', 'LRASPPHead', 'SETRUPHead',
     'SETRMLAHead', 'DPTHead', 'SETRMLAHead', 'SegformerHead', 'ISAHead',
-    'CustomUnetHead','CustomDyHead','CustomDyUnetHead','CustomUnetCBAMHead'
+    'CustomUnetHead','CustomDyHead','CustomDyUnetHead','CustomUnetCBAMHead','CustomDyUnetCBAMHead'
 ]

@@ -37,7 +37,7 @@ class CBAM(nn.Module):
 
         ## spatial attention
         spatial_input = torch.stack([input.max(axis=1)[0],input.mean(axis=1)],axis=1) # N x 2 x H x W
-        spatial_output = self.spatial(spatial_input)
+        spatial_output = self.spatial(spatial_input) # N x 1 x H x W
         output = spatial_output * channel_attended
         return output
 

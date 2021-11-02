@@ -11,6 +11,338 @@ from .decode_head import BaseDecodeHead
 
 from .custom_dy.DyHead import DyHead
 
+import torch
+import math
+import torch.nn as nn
+import torch.nn.functional as F
+
+class BasicConv(nn.Module):
+    def __init__(self, in_planes, out_planes, kernel_size, stride=1, padding=0, dilation=1, groups=1, relu=True, bn=True, bias=False):
+        super(BasicConv, self).__init__()
+        self.out_channels = out_planes
+        self.conv = nn.Conv2d(in_planes, out_planes, kernel_size=kernel_size, stride=stride, padding=padding, dilation=dilation, groups=groups, bias=bias)
+        self.bn = nn.BatchNorm2d(out_planes,eps=1e-5, momentum=0.01, affine=True) if bn else None
+        self.relu = nn.ReLU() if relu else None
+
+    def forward(self, x):
+        x = self.conv(x)
+        if self.bn is not None:
+            x = self.bn(x)
+        if self.relu is not None:
+            x = self.relu(x)
+        return x
+
+class Flatten(nn.Module):
+    def forward(self, x):
+        return x.view(x.size(0), -1)
+
+class ChannelGate(nn.Module):
+    def __init__(self, gate_channels, reduction_ratio=16, pool_types=['avg', 'max']):
+        super(ChannelGate, self).__init__()
+        self.gate_channels = gate_channels
+        self.mlp = nn.Sequential(
+            Flatten(),
+            nn.Linear(gate_channels, gate_channels // reduction_ratio),
+            nn.ReLU(),
+            nn.Linear(gate_channels // reduction_ratio, gate_channels)
+            )
+        self.pool_types = pool_types
+    def forward(self, x):
+        channel_att_sum = None
+        for pool_type in self.pool_types:
+            if pool_type=='avg':
+                avg_pool = F.avg_pool2d( x, (x.size(2), x.size(3)), stride=(x.size(2), x.size(3)))
+                channel_att_raw = self.mlp( avg_pool )
+            elif pool_type=='max':
+                max_pool = F.max_pool2d( x, (x.size(2), x.size(3)), stride=(x.size(2), x.size(3)))
+                channel_att_raw = self.mlp( max_pool )
+            elif pool_type=='lp':
+                lp_pool = F.lp_pool2d( x, 2, (x.size(2), x.size(3)), stride=(x.size(2), x.size(3)))
+                channel_att_raw = self.mlp( lp_pool )
+            elif pool_type=='lse':
+                # LSE pool only
+                lse_pool = logsumexp_2d(x)
+                channel_att_raw = self.mlp( lse_pool )
+
+            if channel_att_sum is None:
+                channel_att_sum = channel_att_raw
+            else:
+                channel_att_sum = channel_att_sum + channel_att_raw
+
+        scale = F.sigmoid( channel_att_sum ).unsqueeze(2).unsqueeze(3).expand_as(x)
+        return x * scale
+
+def logsumexp_2d(tensor):
+    tensor_flatten = tensor.view(tensor.size(0), tensor.size(1), -1)
+    s, _ = torch.max(tensor_flatten, dim=2, keepdim=True)
+    outputs = s + (tensor_flatten - s).exp().sum(dim=2, keepdim=True).log()
+    return outputs
+
+class ChannelPool(nn.Module):
+    def forward(self, x):
+        return torch.cat( (torch.max(x,1)[0].unsqueeze(1), torch.mean(x,1).unsqueeze(1)), dim=1 )
+
+class SpatialGate(nn.Module):
+    def __init__(self):
+        super(SpatialGate, self).__init__()
+        kernel_size = 7
+        self.compress = ChannelPool()
+        self.spatial = BasicConv(2, 1, kernel_size, stride=1, padding=(kernel_size-1) // 2, relu=False)
+    def forward(self, x):
+        x_compress = self.compress(x)
+        x_out = self.spatial(x_compress)
+        scale = F.sigmoid(x_out) # broadcasting
+        return x * scale
+
+class CBAM(nn.Module):
+    def __init__(self, gate_channels, reduction_ratio=16, pool_types=['avg', 'max'], no_spatial=False):
+        super(CBAM, self).__init__()
+        self.ChannelGate = ChannelGate(gate_channels, reduction_ratio, pool_types)
+        self.no_spatial=no_spatial
+        if not no_spatial:
+            self.SpatialGate = SpatialGate()
+    def forward(self, x):
+        x_out = self.ChannelGate(x)
+        if not self.no_spatial:
+            x_out = self.SpatialGate(x_out)
+        return x_out
+
+
+@HEADS.register_module()
+# for FPN output
+class CustomDyUnetCBAMHead(BaseDecodeHead):
+    def __init__(self,
+                feature_scale=4,
+                num_blocks=6,
+                scale=128,
+                is_deconv=True,
+                is_batchnorm=True,
+                **kwargs):
+        self.is_deconv = is_deconv
+        self.is_batchnorm = is_batchnorm
+        self.feature_scale = feature_scale
+        super(CustomDyUnetCBAMHead,self).__init__(**kwargs)
+        
+        assert len(self.in_channels)==4
+        # resolution : [128x128, 64x64, 32x32, 16x16]
+        filters = self.in_channels # [512,512,512,512]
+
+        self.CatChannels = filters[0] # 512
+        self.CatBlocks = len(filters) # 4
+        self.UpChannels = self.CatChannels * self.CatBlocks # 512 * 4
+
+
+        self.h1_PT_hd4 = MaxPool2d(8, 8, ceil_mode=True) # 128/8 x 128/8
+        self.h2_PT_hd4 = MaxPool2d(4, 4, ceil_mode=True) # 64/4 x 64/4
+        self.h3_PT_hd4 = MaxPool2d(2, 2, ceil_mode=True) # 32/2 x 32/2
+
+        self.conv4d_1 = ConvModule(self.UpChannels, self.UpChannels, 3, padding=1,
+                                    conv_cfg=self.conv_cfg,
+                                    norm_cfg=self.norm_cfg,
+                                    act_cfg=self.act_cfg)# 16
+        self.conv4d_1_cbam = CBAM(self.UpChannels)
+
+        '''stage 3d'''
+        self.h1_PT_hd3 = MaxPool2d(4, 4, ceil_mode=True)
+        self.h2_PT_hd3 = MaxPool2d(2, 2, ceil_mode=True)
+        self.hd4_UT_hd3 = nn.Upsample(scale_factor=2, mode='bilinear')  # 14*14
+        self.hd4_UT_hd3_conv = ConvModule(self.UpChannels, self.CatChannels, 3, padding=1,
+                                    conv_cfg=self.conv_cfg,
+                                    norm_cfg=self.norm_cfg,
+                                    act_cfg=self.act_cfg)
+
+        self.conv3d_1 = ConvModule(self.UpChannels, self.UpChannels, 3, padding=1,
+                                    conv_cfg=self.conv_cfg,
+                                    norm_cfg=self.norm_cfg,
+                                    act_cfg=self.act_cfg)  # 16
+        self.conv3d_1_cbam = CBAM(self.UpChannels)
+
+        '''stage 2d '''
+        # h1->320*320, hd2->160*160, Pooling 2 times
+        self.h1_PT_hd2 = MaxPool2d(2, 2, ceil_mode=True)
+        self.hd3_UT_hd2 = nn.Upsample(scale_factor=2, mode='bilinear')  # 14*14
+        self.hd3_UT_hd2_conv = ConvModule(self.UpChannels, self.CatChannels, 3, padding=1,
+                                    conv_cfg=self.conv_cfg,
+                                    norm_cfg=self.norm_cfg,
+                                    act_cfg=self.act_cfg)
+        self.hd4_UT_hd2 = nn.Upsample(scale_factor=4, mode='bilinear')  # 14*14
+        self.hd4_UT_hd2_conv = ConvModule(self.UpChannels, self.CatChannels, 3, padding=1,
+                                    conv_cfg=self.conv_cfg,
+                                    norm_cfg=self.norm_cfg,
+                                    act_cfg=self.act_cfg)
+
+        self.conv2d_1 = ConvModule(self.UpChannels, self.UpChannels, 3, padding=1,
+                                    conv_cfg=self.conv_cfg,
+                                    norm_cfg=self.norm_cfg,
+                                    act_cfg=self.act_cfg)  # 16
+        self.conv2d_1_cbam = CBAM(self.UpChannels)
+
+        '''stage 1d'''
+        # h1->320*320, hd1->320*320, Concatenation
+
+
+        # hd2->160*160, hd1->320*320, Upsample 2 times
+        self.hd2_UT_hd1 = nn.Upsample(scale_factor=2, mode='bilinear')  # 14*14
+        self.hd2_UT_hd1_conv = ConvModule(self.UpChannels, self.CatChannels, 3, padding=1,
+                                    conv_cfg=self.conv_cfg,
+                                    norm_cfg=self.norm_cfg,
+                                    act_cfg=self.act_cfg)
+
+        # hd3->80*80, hd1->320*320, Upsample 4 times
+        self.hd3_UT_hd1 = nn.Upsample(scale_factor=4, mode='bilinear')  # 14*14
+        self.hd3_UT_hd1_conv = ConvModule(self.UpChannels, self.CatChannels, 3, padding=1,
+                                    conv_cfg=self.conv_cfg,
+                                    norm_cfg=self.norm_cfg,
+                                    act_cfg=self.act_cfg)
+
+        # hd4->40*40, hd1->320*320, Upsample 8 times
+        self.hd4_UT_hd1 = nn.Upsample(scale_factor=8, mode='bilinear')  # 14*14
+        self.hd4_UT_hd1_conv = ConvModule(self.UpChannels, self.CatChannels, 3, padding=1,
+                                    conv_cfg=self.conv_cfg,
+                                    norm_cfg=self.norm_cfg,
+                                    act_cfg=self.act_cfg)
+
+        self.conv1d_1 = ConvModule(self.UpChannels, self.UpChannels, 3, padding=1,
+                                    conv_cfg=self.conv_cfg,
+                                    norm_cfg=self.norm_cfg,
+                                    act_cfg=self.act_cfg)  # 16
+        self.conv1d_1_cbam = CBAM(self.UpChannels)
+
+        # -------------Bilinear Upsampling--------------
+        self.upscore4 = nn.Upsample(scale_factor=8,mode='bilinear')
+        self.upscore3 = nn.Upsample(scale_factor=4,mode='bilinear')
+        self.upscore2 = nn.Upsample(scale_factor=2, mode='bilinear')
+
+        # DeepSup
+        self.outconv1 = Conv2d(self.UpChannels, self.num_classes, 3, padding=1)
+        self.outconv2 = Conv2d(self.UpChannels, self.num_classes, 3, padding=1)
+        self.outconv3 = Conv2d(self.UpChannels, self.num_classes, 3, padding=1)
+        self.outconv4 = Conv2d(self.UpChannels, self.num_classes, 3, padding=1)
+
+        self.cls = nn.Sequential(
+                    nn.Dropout(p=0.5),
+                    Conv2d(filters[3],self.num_classes, 1),
+                    nn.AdaptiveMaxPool2d(1),
+                    nn.Sigmoid())
+
+        ## dyhead
+        self.L_size = 4
+        self.S_size = scale
+        self.C_size = self.CatChannels
+        self.dy_head = DyHead(num_blocks,L=self.L_size,S=self.S_size**2,C=self.C_size)
+        self.dy_conv1 = Conv2d(self.C_size,self.num_classes,3,padding=1)
+        self.dy_conv2 = Conv2d(self.C_size,self.num_classes,3,padding=1)
+        self.dy_conv3 = Conv2d(self.C_size,self.num_classes,3,padding=1)
+        self.dy_conv4 = Conv2d(self.C_size,self.num_classes,3,padding=1)
+
+    
+    def dotProduct(self,seg,cls):
+        # cls : B x 11 
+        # seg : B x 11 x 128 x 128 
+        B, N, H, W = seg.size()
+        seg = seg.view(B, N, H * W)
+        final = torch.einsum("ijk,ij->ijk", [seg, cls])
+        final = final.view(B, N, H, W)
+        return final
+
+    def forward(self, inputs):
+        ## -------------Encoder-------------
+        x = self._transform_inputs(inputs) # transform style : multi select여야 한다.
+        h1,h2,h3,h4 = x
+        
+        # -------------Classification-------------
+        ## custom
+        cls_branch = self.cls(h4).squeeze(3).squeeze(2) # (B,11)
+        cls_branch_max = (cls_branch>=0.5).type(torch.int)
+
+        ## -------------Decoder-------------
+        h1_PT_hd4 = self.h1_PT_hd4(h1)
+        h2_PT_hd4 = self.h2_PT_hd4(h2)
+        h3_PT_hd4 = self.h3_PT_hd4(h3)
+        h4_Cat_hd4 = h4
+
+        hd4_input = torch.cat((h1_PT_hd4, h2_PT_hd4, h3_PT_hd4, h4_Cat_hd4), 1)
+        hd4 = self.conv4d_1(self.conv4d_1_cbam(hd4_input))# hd4->40*40*UpChannels
+
+        h1_PT_hd3 = self.h1_PT_hd3(h1)
+        h2_PT_hd3 = self.h2_PT_hd3(h2)
+        h3_Cat_hd3 = h3
+        hd4_UT_hd3 = self.hd4_UT_hd3_conv(self.hd4_UT_hd3(hd4))
+
+        hd3_input = torch.cat((h1_PT_hd3, h2_PT_hd3, h3_Cat_hd3, hd4_UT_hd3), 1)
+        hd3 = self.conv3d_1(self.conv3d_1_cbam(hd3_input))# hd3->80*80*UpChannels
+
+        h1_PT_hd2 = self.h1_PT_hd2(h1)
+        h2_Cat_hd2 = h2
+        hd3_UT_hd2 = self.hd3_UT_hd2_conv(self.hd3_UT_hd2(hd3))
+        hd4_UT_hd2 = self.hd4_UT_hd2_conv(self.hd4_UT_hd2(hd4))
+
+        hd2_input = torch.cat((h1_PT_hd2, h2_Cat_hd2, hd3_UT_hd2, hd4_UT_hd2), 1)
+        hd2 = self.conv2d_1(self.conv2d_1_cbam(hd2_input)) # hd2->160*160*UpChannels
+
+        h1_Cat_hd1 = h1
+        hd2_UT_hd1 = self.hd2_UT_hd1_conv(self.hd2_UT_hd1(hd2))
+        hd3_UT_hd1 = self.hd3_UT_hd1_conv(self.hd3_UT_hd1(hd3))
+        hd4_UT_hd1 = self.hd4_UT_hd1_conv(self.hd4_UT_hd1(hd4))
+
+        hd1_input = torch.cat((h1_Cat_hd1, hd2_UT_hd1, hd3_UT_hd1, hd4_UT_hd1), 1)
+        hd1 = self.conv1d_1(self.conv1d_1_cbam(hd1_input))# hd1->320*320*UpChannels
+
+        d4 = self.outconv4(hd4)
+        d4 = self.upscore4(d4) # B x 11 x 128 x 128
+
+        d3 = self.outconv3(hd3)
+        d3 = self.upscore3(d3) # B x 11 x 128 x 128
+
+        d2 = self.outconv2(hd2)
+        d2 = self.upscore2(d2) # B x 11 x 128 x 128
+
+        d1 = self.outconv1(hd1) # B x 11 x 128 x 128
+
+        # -------------Dyhead--------------
+        assert len(x)==self.L_size
+
+        levels=[]
+        #assert 128 == self.S_size
+        
+        for i in range(len(x)):
+            level = x[i]
+            if level.shape[-1] != self.S_size:
+                level = F.interpolate(input=level, size=(self.S_size, self.S_size), mode='nearest')
+            levels.append(level)
+        
+        concat_levels = torch.stack(levels,dim=1) # B x level x C x H x W
+        concat_levels = concat_levels.flatten(start_dim=3).transpose(dim0=2, dim1=3) # B x level x (H*W) x C
+
+        concat_output = self.dy_head(concat_levels) # B x level x (H*W) x C
+        concat_output = concat_output.transpose(dim0=2,dim1=3).view(concat_output.shape[0],self.L_size,self.C_size,self.S_size,self.S_size)# B x level x C x H x W
+
+        dy1,dy2,dy3,dy4 = [concat_output[:,i,:,:,:] for i in range(concat_output.shape[1])]
+        dy1 = self.dy_conv1(dy1) # B x 11 x H x W
+        dy2 = self.dy_conv2(dy2)
+        dy3 = self.dy_conv3(dy3)
+        dy4 = self.dy_conv4(dy4)
+
+        # for ms train
+        dy1 = F.interpolate(input=dy1,size=d1.shape[2:],mode='nearest') # B x 11 x in_H x in_W
+        dy2 = F.interpolate(input=dy2,size=d2.shape[2:],mode='nearest')
+        dy3 = F.interpolate(input=dy3,size=d3.shape[2:],mode='nearest')
+        dy4 = F.interpolate(input=dy4,size=d4.shape[2:],mode='nearest')
+    
+        # -------------- output ---------
+        out1 = self.dotProduct(d1+dy1,cls_branch_max) # B x classes x H x W
+        out2 = self.dotProduct(d2+dy2,cls_branch_max)
+        out3 = self.dotProduct(d3+dy3,cls_branch_max)
+        out4 = self.dotProduct(d4+dy4,cls_branch_max)
+
+        output = torch.cat((out1,out2,out3,out4),1)
+        output = self.cls_seg(output)
+
+        return output
+
+
+
+
 @HEADS.register_module()
 # for FPN output
 class CustomDyUnetHead(BaseDecodeHead):
