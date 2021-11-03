@@ -14,11 +14,14 @@ import cv2
 class SegCutMix:
     def __init__(self,
         data_root,img_dir,ann_dir,
-        p=0.5,class_weight=[0, 0, 0, 0.25, 0.15, 0.2, 0.3, 0, 0, 0, 0.1]):
+        p=0.5,min_pixel=20,
+        class_weight=[0, 0, 0, 0.25, 0.15, 0.2, 0.3, 0, 0, 0, 0.1]):
+        
         self.img_path = os.path.join(data_root, img_dir)
         self.label_path = os.path.join(data_root, ann_dir)
         self.p=p
         self.class_weight=class_weight
+        self.min_pixel = min_pixel
         
         self.img_list = os.listdir(self.img_path)
         assert len(self.img_list)>0
@@ -44,7 +47,7 @@ class SegCutMix:
             patch_label = cv2.cvtColor(cv2.imread(patch_label_path),cv2.COLOR_BGR2GRAY) # H x W
 
             label = np.random.choice(np.arange(11),p=self.class_weight)
-            if patch_label[patch_label==label].sum()>20: # 너무 작은 object는 무시
+            if patch_label[patch_label==label].sum()>self.min_pixel: # 너무 작은 object는 무시
                 break
     
         resized = A.Resize(img.shape[0],img.shape[1])(image=patch_img,mask=patch_label)
