@@ -1,0 +1,3 @@
+# python3 /opt/ml/segmentation/mmsegmentation/tools/train.py /opt/ml/segmentation/mmsegmentation/configs/_base_/models/UperSwin/Augs/uper_swinS_augs1.py --seed 2021
+python3 /opt/ml/segmentation/mmsegmentation/tools/train.py /opt/ml/segmentation/mmsegmentation/configs/_base_/models/UperSwin/Augs/UperSwinS_augsAll.py --seed 2021
+python3 /opt/ml/segmentation/mmsegmentation/tools/train.py /opt/ml/segmentation/mmsegmentation/configs/_base_/models/UperSwin/Augs/UperSwinB_augsAll.py --seed 2021

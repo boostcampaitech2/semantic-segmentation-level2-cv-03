@@ -1,0 +1,28 @@
+{
+    "os": "Linux-4.4.0-59-generic-x86_64-with-debian-buster-sid",
+    "python": "3.7.11",
+    "heartbeatAt": "2021-10-25T01:48:11.490215",
+    "startedAt": "2021-10-25T01:48:10.400441",
+    "docker": null,
+    "gpu": "Tesla V100-PCIE-32GB",
+    "gpu_count": 1,
+    "cpu_count": 8,
+    "cuda": null,
+    "args": [
+        "/opt/ml/segmentation/mmsegmentation/configs/_base_/models/CSwin/UperCSwinT.py",
+        "--seed",
+        "2021"
+    ],
+    "state": "running",
+    "program": "/opt/ml/segmentation/mmsegmentation/tools/train.py",
+    "codePath": "tools/train.py",
+    "git": {
+        "remote": "https://github.com/open-mmlab/mmsegmentation.git",
+        "commit": "54bd4bdd82c7aa1c0ea7220b5a0672a8326e4134"
+    },
+    "email": null,
+    "root": "/opt/ml/segmentation/mmsegmentation",
+    "host": "1f2dea58e1a6",
+    "username": "root",
+    "executable": "/opt/conda/envs/psc/bin/python"
+}
