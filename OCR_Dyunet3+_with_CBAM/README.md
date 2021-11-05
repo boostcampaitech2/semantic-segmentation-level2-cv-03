@@ -35,7 +35,7 @@ and mmcv-full have to be installed based on required torch and torchtoolkit
 
 After executing this, cv_train[1-5].json and cv_val[1-5].json are created in ./stratified_kfold
 
-### 2. creating train/val annotation images and move images
+### 2. create train/val annotation images and move images
 
 for using mmsegmentation, Have to follwing mmsegmentation data structure.
 
@@ -45,11 +45,11 @@ this code help you to struct data structure following mmsegmentation structure.
 
 ex) cv_train1.json
 
-    python3 util/convert2mmseg.py cv_train1.json --anns_file_path_root ./stratified_kfold/
+    python3 util/convert2mmseg.py cv_train1 --anns_file_path_root ./stratified_kfold/
 
 ex) cv_val1.json
 
-    python3 util/convert2mmseg.py cv_val1.json --anns_file_path_root ./stratified_kfold/
+    python3 util/convert2mmseg.py cv_val1 --anns_file_path_root ./stratified_kfold/
 
 
 ### 3. Move test image
