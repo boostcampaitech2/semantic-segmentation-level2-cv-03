@@ -9,8 +9,7 @@ torchvision == 0.9.0
 pytorch == 1.8.0
 ```
 
-## Dataset
-### 0. move mmseg to your mmsegmentation/
+### move mmseg to your mmsegmentation/
     cp -r mmseg /to/your/mmsegmentation/
 
 
@@ -23,7 +22,9 @@ and mmsegmentation have to be installed based on your directory
 and mmcv-full have to be installed based on required torch and torchtoolkit
 
     pip install mmcv-full -f https://download.openmmlab.com/mmcv/dist/cu101/torch1.8.0/index.html
+    
 
+## Dataset
 
 ### 1. stratified kfold
 
