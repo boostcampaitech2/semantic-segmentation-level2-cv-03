@@ -1,9 +1,0 @@
-*.png
-*.jpg
-*.pth
-__pycache__
-*.csv
-._*
-nohup.out
-*.log
-wandb/
