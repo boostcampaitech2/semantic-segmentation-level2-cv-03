@@ -1,0 +1,46 @@
+{
+	"name": "DeepLabV3+ConvMixer",
+	"n_gpu": 1,
+	"path": {
+		"dataset": "../input/data/",
+		"data_description": "../input/data/",
+		"pretrainedweight": "",
+		"save_checkpoint": {
+			"dir": "./saved/DeepLabV3_ConvMixer_best_model.pt",
+			"file_name": "DeepLabV3_ConvMixer_best_model.pt"
+		},
+		"inference": {
+			"sample": "./sample_submission.csv",
+			"submission": "./submission/deeplabv3_ConvMixer_best_model.csv"
+		}
+	},
+	"dataloader": {
+		"type": "CustomDataLoader",
+		"args": {
+			"batch_size": 4,
+			"num_workers": 2
+		}
+	},
+	"arch": {
+		"type": "DeepLabV3",
+		"args": {}
+	},
+	"loss": {
+		"type": "CrossEntropyLoss"
+	},
+	"optimizer": {
+		"type": "AdamW",
+		"args": {
+			"lr": 0.01,
+			"weight_decay": 1e-06
+		}
+	},
+	"lr_scheduler": {
+		"type": "CosineAnnealingLR"
+	},
+	"num_epoch": 100,
+	"wandb": {
+		"project": "Pstage_seg_model_extra",
+		"entity": "boostcampaitech2-object-detection-level2-cv-03"
+	}
+}
