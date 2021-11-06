@@ -4,6 +4,7 @@ import json
 import pandas as pd
 import re
 from tqdm import tqdm
+import argparse
 
 def close_contour(contour):
     if not np.array_equal(contour[0], contour[-1]):
@@ -36,69 +37,74 @@ def binary_mask_to_polygon(binary_mask, tolerance=0):
 
     return polygons
 
-fold_path = '/opt/ml/segmentation/input/data/sr_train.json'
+parser = argparse.ArgumentParser()
+parser.add_argument('--pseudo_csv', type=str, default='/opt/ml/unilm/beit/semantic_segmentation/sample_submission.csv')
+parser.add_argument('--best_submission', type=str, default='/opt/ml/unilm/beit/semantic_segmentation/work_dirs/custom_beit_slr_sr_aug.csv')
+parser.add_argument('--save_path', type=str, default='pseudo_dataset.json')
+    
+if __name__ == '__main__':
+    args = parser.parse_args()
+    
+    fold_path = '/opt/ml/segmentation/input/data/sr_train.json'
 
+    pesudo = pd.read_csv(args.pseudo_csv)      # csv with target label image ids
+    best_submission = pd.read_csv(args.best_submission)      # submission csv without (256,256) resize
 
-pesudo = pd.read_csv("/opt/ml/unilm/beit/semantic_segmentation/sample_submission.csv")      # csv with target label image ids
-best_submission = pd.read_csv("/opt/ml/unilm/beit/semantic_segmentation/work_dirs/custom_beit_slr_sr_aug.csv")      # submission csv without (256,256) resize
+    # Read annotations
+    with open(fold_path, 'r') as f:
+        dataset = json.loads(f.read())
 
-from tqdm import tqdm
+    images = dataset['images']
+    annotations = dataset['annotations']
+    categories = dataset['categories']
 
-# Read annotations
-with open(fold_path, 'r') as f:
-    dataset = json.loads(f.read())
+    new_images = []
+    new_annotations = []
 
-images = dataset['images']
-annotations = dataset['annotations']
-categories = dataset['categories']
+    image_dict_id = 0
+    annotation_dict_id = annotations[-1]['id'] + 1
+    for id_ in tqdm(range(pesudo.shape[0])):
+        image_dict_id += 1
+        images_dict = {}
+        images_dict['license'] = 0
+        images_dict['url'] = None
+        images_dict['file_name'] = pesudo.loc[id_, 'image_id']
+        images_dict['height'] = 512
+        images_dict['width'] = 512
+        images_dict['date_captured'] = None
+        images_dict['id'] = image_dict_id
+        new_images += [images_dict]
+        for i in range(1, 11): 
+            pesudo_dict = {}
 
-new_images = []
-new_annotations = []
+            A = np.zeros((512, 512))
+            mask = np.array(list(map(int, re.findall("\d+", best_submission[best_submission['image_id'] == pesudo.loc[id_, 'image_id']]['PredictionString'].values[0])))).reshape(512, 512)
+            x, y = np.where(mask==i)
 
-image_dict_id = 0
-annotation_dict_id = annotations[-1]['id'] + 1
-for id_ in tqdm(range(pesudo.shape[0])):
-    image_dict_id += 1
-    images_dict = {}
-    images_dict['license'] = 0
-    images_dict['url'] = None
-    images_dict['file_name'] = pesudo.loc[id_, 'image_id']
-    images_dict['height'] = 512
-    images_dict['width'] = 512
-    images_dict['date_captured'] = None
-    images_dict['id'] = image_dict_id
-    new_images += [images_dict]
-    for i in range(1, 11): 
-        pesudo_dict = {}
+            L = []
+            for x_, y_ in zip(x, y): 
+                L += [(x_, y_)]
 
-        A = np.zeros((512, 512))
-        mask = np.array(list(map(int, re.findall("\d+", best_submission[best_submission['image_id'] == pesudo.loc[id_, 'image_id']]['PredictionString'].values[0])))).reshape(512, 512)
-        x, y = np.where(mask==i)
+            if len(L) != 0: 
+                idx = np.r_[L].T
+                A[idx[0], idx[1]] = 1
+                annotation_dict_id += 1
+                pesudo_dict['id'] = annotation_dict_id
+                pesudo_dict['image_id'] = image_dict_id
+                pesudo_dict['category_id'] = i
+                pesudo_dict['segmentation'] = binary_mask_to_polygon(A)
+                pesudo_dict['area'] = 0
+                pesudo_dict['bbox'] = [0, 0, 0, 0]
+                pesudo_dict['iscrowd'] = 0
+                new_annotations += [pesudo_dict]
 
-        L = []
-        for x_, y_ in zip(x, y): 
-            L += [(x_, y_)]
+    train_ann = {}
+    train_ann['images'] =  new_images
+    train_ann['annotations'] = new_annotations
+    train_ann['categories'] = categories
 
-        if len(L) != 0: 
-            idx = np.r_[L].T
-            A[idx[0], idx[1]] = 1
-            annotation_dict_id += 1
-            pesudo_dict['id'] = annotation_dict_id
-            pesudo_dict['image_id'] = image_dict_id
-            pesudo_dict['category_id'] = i
-            pesudo_dict['segmentation'] = binary_mask_to_polygon(A)
-            pesudo_dict['area'] = 0
-            pesudo_dict['bbox'] = [0, 0, 0, 0]
-            pesudo_dict['iscrowd'] = 0
-            new_annotations += [pesudo_dict]
+    # save path
+    save_path = args.save_path
 
-train_ann = {}
-train_ann['images'] =  new_images
-train_ann['annotations'] = new_annotations
-train_ann['categories'] = categories
-
-# save path
-save_path = 'pseudo_dataset.json'
-
-with open(save_path, 'w') as f:
-    json.dump(train_ann, f, indent=4)
+    with open(save_path, 'w') as f:
+        json.dump(train_ann, f, indent=4)

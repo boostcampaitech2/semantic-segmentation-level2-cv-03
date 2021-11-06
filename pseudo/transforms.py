@@ -1,6 +1,9 @@
 import albumentations as A
 import matplotlib.pyplot as plt
 import os
+from pycocotools.coco import COCO
+import cv2
+import numpy as np
 
 category_names = ['Backgroud',
                 'General trash',
@@ -31,16 +34,13 @@ class AugMix(object):
         self.root = COCO(json)
         self.max_obj = max_obj
         self.prob = prob
-        # with open('/opt/ml/segmentation/input/data/train.json', 'r') as f:
-        #     self.root = json.load(f)
     def apply_augmentations(self, image, mask):
         transform = A.Compose([A.HorizontalFlip(p=0.5),
                                A.VerticalFlip(p=0.25),
-                            #    A.Rotate(p=0.25),
-                            #    A.RandomBrightnessContrast(p=0.25)
-                               A.ShiftScaleRotate(shift_limit=(-0.5, 0.5), scale_limit=(-0.25, 0.2), rotate_limit=(-60, 60), border_mode=cv2.BORDER_CONSTANT, p=1.0),
-                                
-                                #A.RandomBrightness(p=0.5),
+                               A.ShiftScaleRotate(shift_limit=(-0.5, 0.5),
+                                                  scale_limit=(-0.25, 0.2),
+                                                  rotate_limit=(-60, 60),
+                                                  border_mode=cv2.BORDER_CONSTANT, p=1.0)
                                ])
         
         transformed = transform(image=image, mask=mask)
@@ -64,8 +64,7 @@ class AugMix(object):
         image_infos = self.root.loadImgs(image_id)[0]
         
         image = cv2.imread(os.path.join(self.image_root, image_infos['file_name']))
-        image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB).astype(np.float32)
-        # cv2.imwrite(f'/opt/ml/unilm/beit/semantic_segmentation/debug/og/{image_id}.jpg', image)
+        image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB).astype(np.float32)           # unsigned int8
         
         # random select object
         idxs = self.root.getAnnIds(imgIds=image_infos['id'])
@@ -98,19 +97,62 @@ class AugMix(object):
             mask[self.root.annToMask(anns[i]) == 1] = pix
         mask = mask.astype(np.int8)
         
-        # self._save_imgs(results['img'],results['gt_semantic_seg'],'og', image_id)
+        ori_img_w, ori_img_h = results['img'].shape[0], results['img'].shape[1]
+        resize = A.Compose([A.Resize(width=ori_img_w, height=ori_img_h)])
+        resized = resize(image=image, mask=mask)
+        image, mask = resized['image'], resized['mask']
         
         if self.augmentation:
             image, mask = self.apply_augmentations(image, mask)
+            
         # mask background to 0
         image[:][mask==0] = 0
-        # self._save_imgs(image/255.0, mask, 'pre_aug', image_id)
         results['img'][image != 0] = image[image != 0]
         results['gt_semantic_seg'][mask != 0] = mask[mask != 0]
-        # self._save_imgs(results['img'],results['gt_semantic_seg'],'aug', image_id)
-        # cv2.imwrite(f'/opt/ml/unilm/beit/semantic_segmentation/debug/aug/{image_id}.jpg', results['img'])
         return results
-    
-    def _save_imgs(self, img, mask, marker, image_id):
-        plt.imsave(f'/opt/ml/unilm/beit/semantic_segmentation/debug/new_{marker}/{image_id}.jpg', img)
-        plt.imsave(f'/opt/ml/unilm/beit/semantic_segmentation/debug/new_{marker}/{image_id}_mask.jpg', mask)
+
+
+@PIPELINES.register_module()
+class Albu:
+
+    def __init__(self, transforms):
+        self.transforms = transforms
+        self.aug = Compose([self.albu_builder(t) for t in self.transforms])
+        self.base = '/opt/ml/segmentation/mmsegmentation/submission/albu_vis'
+
+    def albu_builder(self, cfg):
+        """Import a module from albumentations.
+        It inherits some of :func:`build_from_cfg` logic.
+        Args:
+            cfg (dict): Config dict. It should at least contain the key "type".
+        Returns:
+            obj: The constructed object.
+        """
+
+        assert isinstance(cfg, dict) and 'type' in cfg
+        args = cfg.copy()
+
+        obj_type = args.pop('type')
+        if mmcv.is_str(obj_type):
+            if albumentations is None:
+                raise RuntimeError('albumentations is not installed')
+            obj_cls = getattr(albumentations, obj_type)
+
+        if 'transforms' in args:
+            args['transforms'] = [
+                self.albu_builder(transform)
+                for transform in args['transforms']
+            ]
+
+        return obj_cls(**args)
+
+    def __call__(self, results):
+        img = results['img']
+        mask = results['gt_semantic_seg']
+
+        augmented = self.aug(image=img,mask=mask)
+
+        results['img'] = augmented['image']
+        results['gt_semantic_seg']= augmented['mask']
+
+        return results
