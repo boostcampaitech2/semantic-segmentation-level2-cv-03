@@ -63,7 +63,9 @@ ex) cv_val1.json
 ### 3. Move test image
     python3 util/convert2mmseg.py test --anns_file_path_root /opt/ml/segmentation/input/data --move_only
 
-### 4. Move pseudo image
+### 4. Move pseudo image(optional)
+    # download this link :
+    unzip pseudo.zip
     cp -r /pseudo ./dataset/annotations/
 
 
@@ -95,7 +97,7 @@ ex) cv_val1.json
 |   |   ├── cv_val3
 |   |   ├── cv_val4
 |   |   ├── cv_val5
-|   |   ├── pseudo
+|   |   ├── pseudo(optional)
 ```
 
 ### 5. Modify data_root in \_base\_\/base_dataset.py
@@ -116,6 +118,9 @@ after modify)
 ## Training
     # in your mmsegmentation dir
     python3 tools/train.py in/this/dir/model/OCR_dyunetCBAM_swinB.py
+
+    # pseudo version
+    python3 tools/train.py in/this/dir/model/pseudo_OCR_dyunetCBAM_swinB.py
 
 ## Inference
 
