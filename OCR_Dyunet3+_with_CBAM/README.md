@@ -2,6 +2,11 @@
 
 ![Untitled](https://s3.us-west-2.amazonaws.com/secure.notion-static.com/8980b2c6-ea12-470f-a072-5d0c477c29d7/Untitled.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIAT73L2G45O3KS52Y5%2F20211105%2Fus-west-2%2Fs3%2Faws4_request&X-Amz-Date=20211105T084624Z&X-Amz-Expires=86400&X-Amz-Signature=8f4b2ebf4542508a4ab2ce4ba115db5173dfa58f6ed2b2f9934d0a04cb438866&X-Amz-SignedHeaders=host&response-content-disposition=filename%20%3D%22Untitled.png%22)
 
+- dynamic head : https://arxiv.org/abs/2106.08322
+- Unet3+ : https://arxiv.org/abs/2004.08790
+- OCR : https://arxiv.org/abs/1909.11065
+- Swin transformer : https://arxiv.org/abs/2103.14030
+
 ## Requirements
 
 ### version
