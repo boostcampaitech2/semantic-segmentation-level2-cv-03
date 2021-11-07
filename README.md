@@ -82,7 +82,7 @@
 ### Checklist  
 - [x] Data Curation
 - [x] Test Time Augmentation
-- [x] Loss
+- [x] Loss - Cross entropy
 - [x] Ensemble(BEiT, UperSwinB, OCR+DyUnetCBAM3)
 - [x] Background patches
 - [x] Oversampling for class imbalance problem  
@@ -114,7 +114,7 @@
 |   ├── test.json
 |   ├── /train
 |   ├── /test
-├──/object-detection-level2-cv-03
+├──/semantic-segmentation-level2-cv-03
 │   ├── model1
 │         ├── config.py
 │         └── readme.md
