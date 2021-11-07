@@ -64,7 +64,7 @@ ex) cv_val1.json
     python3 util/convert2mmseg.py test --anns_file_path_root /opt/ml/segmentation/input/data --move_only
 
 ### 4. Move pseudo image(optional)
-    # download this link :
+    # download this link : https://kr.object.ncloudstorage.com/resume/pseudo.zip
     unzip pseudo.zip
     cp -r /pseudo ./dataset/annotations/
 
