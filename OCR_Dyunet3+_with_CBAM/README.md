@@ -10,6 +10,9 @@
 cudatoolkit == 10.1
 torchvision == 0.9.0
 pytorch == 1.8.0
+scikit-learn==0.22
+iterative-stratification
+albumentations
 ```
 
 ### move mmseg to your mmsegmentation/
