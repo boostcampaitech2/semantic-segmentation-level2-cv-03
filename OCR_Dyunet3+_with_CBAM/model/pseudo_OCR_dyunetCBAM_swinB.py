@@ -1,17 +1,27 @@
 _base_ = ['OCR_dyunet_swinB_dyaux.py']
 
-MODEL_NAME = 'OCR_dyunetCBAM_swinB'
+MODEL_NAME = 'pseudo_OCR_dyunetCBAM_swinB'
 fold = '2'
 work_dir = f'./work_dirs/{MODEL_NAME}_cv{fold}'
-data_root = '/opt/ml/segmentation/moon/dataset/'
 
 norm_cfg = dict(type='SyncBN', requires_grad=True)
-
 multi_scale = [(x,x) for x in range(256, 768+1, 32)]
 
 img_norm_cfg = dict(
     mean=[123.675, 116.28, 103.53], std=[58.395, 57.12, 57.375], to_rgb=True)
-    
+dataset_type = 'CustomDataset'
+data_root = '/opt/ml/segmentation/moon/dataset/'
+classes = ['Backgroud',
+ 'General trash',
+ 'Paper',
+ 'Paper pack',
+ 'Metal',
+ 'Glass',
+ 'Plastic',
+ 'Styrofoam',
+ 'Plastic bag',
+ 'Battery',
+ 'Clothing']
 
 ####################################################################################
 
@@ -54,8 +64,6 @@ model = dict(
 )
 
 
-
-
 train_pipeline = [
     dict(type='LoadImageFromFile'),
     dict(type='LoadAnnotations'),
@@ -75,13 +83,36 @@ train_pipeline = [
     dict(type='Collect', keys=['img', 'gt_semantic_seg']),
 ]
 
+pseudo_pipeline = [
+    dict(type='LoadImageFromFile'),
+    dict(type='LoadAnnotations'),
+    dict(type='Resize', img_scale=multi_scale, multiscale_mode='value', keep_ratio=True),
+    dict(type='RandomFlip', prob=0.5),
+    dict(type='Normalize', **img_norm_cfg),
+    dict(type='Pad', size_divisor=32, pad_val=0, seg_pad_val=255),
+    dict(type='DefaultFormatBundle'),
+    dict(type='Collect', keys=['img', 'gt_semantic_seg']),
+]
 
-data = dict(
-    train=dict(
+train_dataset= dict(
+        type=dataset_type,
+        data_root=data_root,
         img_dir = f"images/cv_train{fold}",
         ann_dir = f"annotations/cv_train{fold}",
         pipeline=train_pipeline,
-    ),
+        classes=classes)
+
+pseudo_dataset= dict(
+    type=dataset_type,
+    data_root=data_root,
+    img_dir='images/test',
+    ann_dir='annotations/pseudo',
+    pipeline=pseudo_pipeline,)
+
+data = dict(
+    train=[
+        train_dataset,
+        pseudo_dataset],
     val=dict(
         img_dir = f"images/cv_val{fold}",
         ann_dir = f"annotations/cv_val{fold}"),
