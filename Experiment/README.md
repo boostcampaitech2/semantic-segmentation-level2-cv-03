@@ -14,8 +14,6 @@
 ```
 
 .
-├── EDA
-|     ├── EDA.py
 |
 ├── Train_Experiment
 |     ├── data
